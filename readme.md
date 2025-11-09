@@ -40,7 +40,7 @@ OPENAI_API_KEY=your_secrit_api_key
 
 ## Usage
 -----
-To use the MultiPDF Chat App, follow these steps:
+To use the ACE AI App, follow these steps:
 
 1. Ensure that you have installed the required dependencies and added the OpenAI API key to the `.env` file.
 
