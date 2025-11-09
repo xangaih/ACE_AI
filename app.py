@@ -1190,10 +1190,13 @@ import streamlit as st
 from io import BytesIO, StringIO
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from pdfminer.high_level import extract_text as pdfminer_extract_text
+from pdfminer.high_level import extract_text as pdfminer_extract_text  # keep as in your env if needed
 
 import time, json
 from datetime import datetime
+
+# >>> Hide dev/demo UI without touching logic
+SHOW_DEBUG = False
 
 # LangChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -1361,7 +1364,6 @@ def summarize_all_chunks(text_chunks):
     llm = _summarizer_llm()
     docs = [Document(page_content=t) for t in text_chunks]
     chain = load_summarize_chain(llm, chain_type="map_reduce")
-    # Use invoke to avoid deprecation; handle return type across LC versions
     out = chain.invoke({"input_documents": docs})
     return out.get("output_text") if isinstance(out, dict) else str(out)
 
@@ -1624,7 +1626,6 @@ def handle_userinput(user_question):
         st.session_state.ui_messages.append(("ai", ack))
         st.session_state.last_citations = []
         st.session_state.last_used_summary_fallback = False
-        _render_ui_messages()
         return
 
     # Special modes before RAG
@@ -1633,7 +1634,6 @@ def handle_userinput(user_question):
         st.session_state.ui_messages.append(("ai", quiz))
         st.session_state.last_citations = []
         st.session_state.last_used_summary_fallback = False
-        _render_ui_messages()
         return
 
     if _looks_like_steps_request(q) and st.session_state.get("text_chunks"):
@@ -1641,7 +1641,6 @@ def handle_userinput(user_question):
         st.session_state.ui_messages.append(("ai", steps))
         st.session_state.last_citations = []
         st.session_state.last_used_summary_fallback = False
-        _render_ui_messages()
         return
 
     # RAG
@@ -1656,7 +1655,7 @@ def handle_userinput(user_question):
 
     # Auto-summary on weak retrieval for generic/first-touch queries
     use_summary = False
-    if retrieval_empty and ( _looks_like_summary_request(q) ):
+    if retrieval_empty and (_looks_like_summary_request(q)):
         if st.session_state.get("text_chunks"):
             with st.spinner("Summarizing the whole PDF..."):
                 answer = summarize_all_chunks(st.session_state.text_chunks)
@@ -1666,16 +1665,6 @@ def handle_userinput(user_question):
     st.session_state.ui_messages.append(("ai", answer))
     st.session_state.last_citations = ([] if use_summary else sources)
     st.session_state.last_used_summary_fallback = use_summary
-
-    # Render full chat
-    _render_ui_messages()
-
-    # Show citations for the LAST turn only (and only if not a summary fallback)
-    if (not use_summary) and sources and total_chars >= 40:
-        with st.expander("Citations (retrieved snippets)"):
-            for i, d in enumerate(sources, 1):
-                preview = (d.page_content or "").strip().replace("\n", " ")
-                st.markdown(f"**[{i}]** {preview[:320]}{'…' if len(preview)>320 else ''}")
 
 
 # -----------------------------
@@ -1701,12 +1690,10 @@ def main():
 
     st.header("Chat with multiple PDFs 📚")
 
-    # Render prior chat (before new input)
-    if st.session_state.ui_messages:
-        _render_ui_messages()
+    # NOTE: don't render here — we render once at the end to avoid duplicates
 
     # Main question box
-    user_question = st.text_input("Ask a question about your documents:")
+    user_question = st.chat_input("Ask a question about your documents:")
     if user_question and st.session_state.conversation:
         handle_userinput(user_question)
 
@@ -1719,7 +1706,6 @@ def main():
         st.session_state.ui_messages.append(("ai", summary))
         st.session_state.last_citations = []
         st.session_state.last_used_summary_fallback = True
-        _render_ui_messages()
 
     # Sidebar upload & processing
     with st.sidebar:
@@ -1730,7 +1716,8 @@ def main():
             type=["pdf"],
         )
 
-        if st.button("Test extraction & chunking", disabled=not pdf_docs):
+        # HIDE UI: Test extraction & chunking (logic intact)
+        if SHOW_DEBUG and st.button("Test extraction & chunking", disabled=not pdf_docs):
             with st.spinner("Running tests..."):
                 test_extract_and_chunk(pdf_docs)
 
@@ -1755,16 +1742,28 @@ def main():
 
                 st.success("Ready! Ask a question above, say 'summarize', 'ask me questions', or 'what are the steps'.")
 
-        # Mini retrieval demo panel
-        st.subheader("Mini Retrieval Demo")
-        demo_qs_text = st.text_area(
-            "Enter 3–5 queries (one per line)",
-            value="What is this PDF about?\nList the core concepts.\nGive two key definitions.\nWhere is the method explained?\nSummarize section 1."
-        )
-        demo_k = st.slider("Show top-k retrieved snippets", 1, 5, 3)
-        if st.button("Run retrieval demo", disabled=not st.session_state.get("conversation")):
-            with st.spinner("Running mini demo..."):
-                run_mini_demo([q for q in demo_qs_text.splitlines() if q.strip()], k=demo_k)
+        # HIDE UI: Mini Retrieval Demo (logic intact)
+        if SHOW_DEBUG:
+            st.subheader("Mini Retrieval Demo")
+            demo_qs_text = st.text_area(
+                "Enter 3–5 queries (one per line)",
+                value="What is this PDF about?\nList the core concepts.\nGive two key definitions.\nWhere is the method explained?\nSummarize section 1."
+            )
+            demo_k = st.slider("Show top-k retrieved snippets", 1, 5, 3)
+            if st.button("Run retrieval demo", disabled=not st.session_state.get("conversation")):
+                with st.spinner("Running mini demo..."):
+                    run_mini_demo([q for q in demo_qs_text.splitlines() if q.strip()], k=demo_k)
+
+    # ---------- SINGLE RENDER PASS (prevents duplicates) ----------
+    _render_ui_messages()
+
+    # Citations for the last turn only (and only if not a summary fallback)
+    cites = st.session_state.last_citations
+    if cites and not st.session_state.last_used_summary_fallback:
+        with st.expander("Citations (retrieved snippets)"):
+            for i, d in enumerate(cites, 1):
+                preview = (d.page_content or "").strip().replace("\n", " ")
+                st.markdown(f"**[{i}]** {preview[:320]}{'…' if len(preview)>320 else ''}")
 
     if not st.session_state.conversation:
         st.info("Upload PDFs and click **Process** to start.")

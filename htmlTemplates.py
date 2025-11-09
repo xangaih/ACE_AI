@@ -36,9 +36,24 @@ bot_template = '''
 
 user_template = '''
 <div class="chat-message user">
-    <div class="avatar">
-        <img src="https://i.ibb.co/rdZC7LZ/Photo-logo-1.png">
-    </div>    
+    <div class="avatar" style="display:none;"></div>
     <div class="message">{{MSG}}</div>
 </div>
 '''
+
+
+import base64, pathlib
+
+def _img_to_data_url(path: str) -> str:
+    data = pathlib.Path(path).read_bytes()
+    b64 = base64.b64encode(data).decode("utf-8")
+    return f"data:image/png;base64,{b64}"
+
+# Point this to your file name
+BOT_AVATAR_SRC = _img_to_data_url("logo.jpg")
+
+# Replace the old hosted avatar URL with your local logo (no other changes needed)
+bot_template = bot_template.replace(
+    "https://i.ibb.co/cN0nmSj/Screenshot-2023-05-28-at-02-37-21.png",
+    BOT_AVATAR_SRC,
+)
